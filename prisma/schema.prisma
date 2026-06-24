@@ -30,11 +30,25 @@ enum JobStatus {
   DISPUTED
 }
 
+enum EscrowStatus {
+  HELD
+  RELEASED
+  DISPUTED
+  REFUNDED
+}
+
+enum SubscriptionTier {
+  STARTER
+  GROWTH
+  PRO
+}
+
 model User {
   id            String    @id @default(uuid())
   email         String    @unique
   name          String?
   phone         String?   @unique
+  idNumber      String?   @unique
   role          UserRole  @default(CUSTOMER)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
@@ -49,6 +63,8 @@ model CustomerProfile {
   user    User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   
   jobs    Job[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model ProviderProfile {
@@ -59,11 +75,30 @@ model ProviderProfile {
   companyName        String
   description        String?
   verificationStatus VerificationStatus @default(PENDING)
+  verificationTier   Int                @default(1) // Tiers 1-4
   
+  documents          BusinessDocument[]
   vehicles           Vehicle[]
   crewMembers        CrewMember[]
   bids               Bid[]
   jobs               Job[]
+  subscription       Subscription?
+
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+}
+
+model BusinessDocument {
+  id                String          @id @default(uuid())
+  providerProfileId String
+  provider          ProviderProfile @relation(fields: [providerProfileId], references: [id], onDelete: Cascade)
+  
+  type              String // Business Reg, KRA PIN, Permit
+  fileUrl           String
+  status            VerificationStatus @default(PENDING)
+  
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
 }
 
 model Vehicle {
@@ -73,6 +108,13 @@ model Vehicle {
   
   type              String // e.g., 3-ton truck, Pickup
   registration      String
+  logbookUrl        String?
+  insuranceUrl      String?
+  ntsaUrl           String?
+  status            VerificationStatus @default(PENDING)
+  
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
 }
 
 model CrewMember {
@@ -82,6 +124,11 @@ model CrewMember {
   
   name              String
   idNumber          String?
+  photoUrl          String?
+  status            VerificationStatus @default(PENDING)
+  
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
 }
 
 model Job {
@@ -98,11 +145,14 @@ model Job {
   deliveryLocation  String
   moveDate          DateTime
   description       String?
+  propertyType      String? // e.g., 1 Bedroom, Bedsitter, Office
+  specialItems      String? // JSON string or text for special handling items
+  photos            String[] // URLs to move photos
   
-  completionPin     String?   // The Job Completion PIN
+  completionPin     String?   // The Job Completion PIN (Job Completion Handshake)
   
   bids              Bid[]
-  payment           EscrowPayment?
+  payment           EscrowTransaction?
   review            Review?
   
   createdAt         DateTime  @default(now())
@@ -118,31 +168,54 @@ model Bid {
   provider          ProviderProfile @relation(fields: [providerId], references: [id], onDelete: Cascade)
   
   amount            Float
-  description       String?
+  message           String?
+  status            String          @default("PENDING") // PENDING, ACCEPTED, REJECTED
   
   createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
 }
 
-model EscrowPayment {
-  id            String   @id @default(uuid())
-  jobId         String   @unique
-  job           Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+model EscrowTransaction {
+  id            String       @id @default(uuid())
+  jobId         String       @unique
+  job           Job          @relation(fields: [jobId], references: [id], onDelete: Cascade)
   
   amount        Float
-  mpesaCode     String?  // Transaction ID from Daraja
-  status        String   // e.g., HELD, RELEASED, REFUNDED
+  mpesaRef      String?      @unique // Transaction ID from Daraja
+  status        EscrowStatus @default(HELD)
   
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
 }
 
 model Review {
-  id        String   @id @default(uuid())
-  jobId     String   @unique
-  job       Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  id               String   @id @default(uuid())
+  jobId            String   @unique
+  job              Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
   
-  rating    Int
-  comment   String?
+  // 5-dimension rating
+  punctuality      Int
+  professionalism  Int
+  careOfItems      Int
+  communication    Int
+  valueForMoney    Int
   
-  createdAt DateTime @default(now())
+  comment          String?
+  
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model Subscription {
+  id                String           @id @default(uuid())
+  providerProfileId String           @unique
+  provider          ProviderProfile  @relation(fields: [providerProfileId], references: [id], onDelete: Cascade)
+  
+  tier              SubscriptionTier @default(STARTER)
+  mpesaRatibaRef    String?          @unique
+  active            Boolean          @default(true)
+  nextRenewal       DateTime
+  
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
 }
